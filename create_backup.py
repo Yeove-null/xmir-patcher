@@ -12,7 +12,7 @@ import read_info
 
 gw = gateway.Gateway()
 
-dev = read_info.DevInfo(verbose = 0, infolevel = 1)
+dev = read_info.DevInfo(verbose = 0, infolevel = 0)
 dev.get_dmesg()
 dev.get_part_table()
 if not dev.partlist or len(dev.partlist) <= 1:
