@@ -75,6 +75,7 @@ class Gateway():
     self.mac_address = None
     self.encryptmode = 0     # 0: sha1, 1: sha256
     self.nonce_key = None
+    self.web_scheme = 'http'
     self.stok = None    # HTTP session token
     self.status = -2
     self.errcode = -1
@@ -122,7 +123,7 @@ class Gateway():
     elif post:
         headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
     headers["User-Agent"] = self.user_agent
-    url = f"http://{self.ip_addr}/cgi-bin/luci/"
+    url = f"{self.web_scheme}://{self.ip_addr}/cgi-bin/luci/"
     if path.startswith('API/'):
         url += f';stok={self.stok}/api' + path[3:]
     else:
@@ -130,9 +131,9 @@ class Gateway():
     t_timeout = (self.con_timeout, timeout) if timeout is not None else (self.con_timeout, self.timeout)
     #print(f'{t_timeout=}')
     if post:
-        response = requests.post(url,  data = params, stream = stream, headers = headers, timeout = t_timeout)
+        response = requests.post(url,  data = params, stream = stream, headers = headers, timeout = t_timeout, verify = False)
     else:
-        response = requests.get(url, params = params, stream = stream, headers = headers, timeout = t_timeout)
+        response = requests.get(url, params = params, stream = stream, headers = headers, timeout = t_timeout, verify = False)
     self.last_resp_code = response.status_code
     if resp and not stream:
         try:
@@ -166,10 +167,31 @@ class Gateway():
     self.encryptmode = 0
     self.nonce_key = None
     self.status = -2
+    page = ''
+    for scheme in [ 'http', 'https' ]:
+        page = ''
+        self.web_scheme = scheme
+        try:
+            page = self.api_request('web', resp = 'TEXT', timeout = self.timeout)
+            #with open("r0.txt", "wb") as file:
+            #  file.write(page.encode("utf-8"))
+        except requests.exceptions.HTTPError as e:
+            print("Initial Request Http Error:", e)
+        except requests.exceptions.ConnectionError as e:
+            continue  # try other scheme
+        except requests.exceptions.ConnectTimeout as e:
+            continue  # try other scheme
+        except requests.exceptions.Timeout as e:
+            print("Initial Request Timeout Error:", e)
+        except requests.exceptions.RequestException as e:
+            print("Initial Request exception:", e)
+        except Exception as e:      
+            print("Initial Request Exception:", e)
+        break
+    if not page:
+        self.web_scheme = 'http'
+        return -2
     try:
-      page = self.api_request('web', resp = 'TEXT', timeout = self.timeout)
-      #with open("r0.txt", "wb") as file:
-      #  file.write(page.encode("utf-8"))
       hardware = re.findall(r'hardware = \'(.*?)\'', page)
       if hardware and len(hardware) > 0:
         self.device_name = hardware[0]
@@ -186,18 +208,7 @@ class Gateway():
       self.mac_address = mac_address.group(1) if mac_address else None
       nonce_key = re.search(r'key: \'(.*)\',', page)
       self.nonce_key = nonce_key.group(1) if nonce_key else None
-    except requests.exceptions.HTTPError as e:
-      print("Http Error:", e)
-    except requests.exceptions.ConnectionError as e:
-      #print("Error Connecting:", e)
-      return self.status
-    except requests.exceptions.ConnectTimeout as e:
-      print ("ConnectTimeout Error:", e)
-    except requests.exceptions.Timeout as e:
-      print ("Timeout Error:", e)
-    except requests.exceptions.RequestException as e:
-      print("Request Exception:", e)
-    except Exception:      
+    except Exception:
       pass
     if not self.device_name:
       die("You need to make the initial configuration in the WEB of the device!")
